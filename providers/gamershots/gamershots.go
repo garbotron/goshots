@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const MongoServerAddress = "localhost"
+const MongoServerAddress = "127.0.0.1"
 const MongoDbName = "gamershots"
 const MongoTempDbName = "gamershots_wip"
 const MongoGamesCollectionName = "games"

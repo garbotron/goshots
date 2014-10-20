@@ -99,12 +99,10 @@ type scraperContext struct {
 }
 
 func (s *scraperContext) Log(format string, a ...interface{}) {
-	f, err := os.OpenFile(s.logFilePath, os.O_APPEND, 0666)
+	os.MkdirAll(path.Dir(s.logFilePath), 0666)
+	f, err := os.OpenFile(s.logFilePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 	if err != nil {
-		os.MkdirAll(path.Dir(s.logFilePath), 0666)
-		f, err = os.Create(s.logFilePath)
-	}
-	if err != nil {
+		s.Error("scraper log channel", err)
 		return
 	}
 	defer f.Close()
@@ -115,12 +113,10 @@ func (s *scraperContext) Log(format string, a ...interface{}) {
 }
 
 func (s *scraperContext) Error(context string, logError error) {
-	f, err := os.OpenFile(s.errorFilePath, os.O_APPEND, 0666)
+	os.MkdirAll(path.Dir(s.errorFilePath), 0666)
+	f, err := os.OpenFile(s.errorFilePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 	if err != nil {
-		os.MkdirAll(path.Dir(s.errorFilePath), 0666)
-		f, err = os.Create(s.errorFilePath)
-	}
-	if err != nil {
+		s.Error("scraper error channel", err)
 		return
 	}
 	defer f.Close()

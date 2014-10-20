@@ -39,7 +39,7 @@ func (gs *Gamershots) StartScraping(context goshots.ScraperContext) goshots.Scra
 		proxyTarget: utils.CreateProxyTarget(20),
 		stage:       "beginning scan",
 		abortSignal: make(chan struct{}, 1),
-		testMode:    true, //TEMP
+		testMode:    false,
 	}
 
 	go s.scrape()

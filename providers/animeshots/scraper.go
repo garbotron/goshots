@@ -8,6 +8,7 @@ import (
 	"github.com/garbotron/goshots/utils"
 	"gopkg.in/mgo.v2"
 	"io/ioutil"
+	"net/http"
 	"strconv"
 	"strings"
 )
@@ -106,8 +107,12 @@ func (s *scraper) finish(err error) {
 func (s *scraper) scrapeShowListings() error {
 
 	// don't use proxy for this giant page
-	doc, err := goquery.NewDocument("http://www.animeclick.it/AnimeSlide.php?year=blank&ordine=xtitjap&senso=ASC")
+	resp, err := http.Get("http://www.animeclick.it/AnimeSlide.php?year=blank&ordine=xtitjap&senso=ASC")
+	if err != nil {
+		return err
+	}
 
+	doc, err := goquery.NewDocumentFromResponse(resp)
 	if err != nil {
 		return err
 	}
@@ -354,6 +359,8 @@ func (s *scraper) translateTag(tag string) string {
 		return "Psychological"
 	case "Pubblico Adulto":
 		return "Adult"
+	case "Pubblico Maturo":
+		return "Mature"
 	case "Reverse-harem":
 		return "Reverse-harem"
 	case "Scolastico":
