@@ -139,38 +139,7 @@ func (s *scraper) scrapeGameListings() error {
 	for year := firstYear; year <= lastYear; year++ {
 		go s.scrapeGameListingPage(year, 0, done)
 	}
-	err := readManyErrors(done, (lastYear-firstYear)+1)
-	if err != nil {
-		return err
-	}
-
-	// each game name may have multiple entries (for each year it was released)
-	// kill all but the oldest one
-	result := struct {
-		Listings []gameListing "Listings"
-	}{}
-	iter := s.listings.Pipe([]bson.M{{
-		"$group": bson.M{
-			"_id":      "$shortname",
-			"Listings": bson.M{"$push": "$$ROOT"},
-		},
-	}}).Iter()
-	for iter.Next(&result) {
-		minYear := 100000
-		for _, listing := range result.Listings {
-			if listing.Year < minYear {
-				minYear = listing.Year
-			}
-		}
-		for _, listing := range result.Listings {
-			if listing.Year > minYear {
-				if err := s.listings.Remove(&listing); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return iter.Err()
+	return readManyErrors(done, (lastYear-firstYear)+1)
 }
 
 func (s *scraper) scrapeGameListingPage(year int, offset int, done chan<- error) {
@@ -178,7 +147,6 @@ func (s *scraper) scrapeGameListingPage(year int, offset int, done chan<- error)
 	numGames := int32(0)
 	url := fmt.Sprintf("http://www.mobygames.com/browse/games/%d/offset,%d/list-games/", year, offset)
 	doc := s.downloadPage(url)
-	listings := []interface{}{}
 	doc.Find("#mof_object_list a").Each(func(_ int, sel *goquery.Selection) {
 
 		attr, ok := sel.Attr("href")
@@ -187,7 +155,11 @@ func (s *scraper) scrapeGameListingPage(year int, offset int, done chan<- error)
 		}
 		short := attr[len("/game/"):]
 		long := strings.TrimSpace(sel.Text())
-		listings = append(listings, &gameListing{year, short, long})
+
+		_, err := s.listings.Upsert(bson.M{"shortname": short}, &gameListing{year, short, long})
+		if err != nil {
+			s.cxt.Error("listings", err)
+		}
 		s.cxt.Log("found '%s' (%d)", long, year)
 		numGames++
 	})
@@ -195,11 +167,6 @@ func (s *scraper) scrapeGameListingPage(year int, offset int, done chan<- error)
 	if s.aborting {
 		done <- goshots.ScraperAbortError()
 		return
-	}
-
-	err := s.listings.Insert(listings...)
-	if err != nil {
-		s.cxt.Error("listings", err)
 	}
 
 	if !s.testMode && numGames == 25 {
