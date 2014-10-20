@@ -3,8 +3,8 @@ package goshots
 import (
 	"bufio"
 	"fmt"
-	"github.com/garbotron/goshots/utils"
 	"os"
+	"path"
 	"time"
 )
 
@@ -26,11 +26,12 @@ func RenderScrapePage(genericData *RendererData) error {
 	}
 
 	cxt, exists := scraperContexts[data.Provider.ShortName()]
+	logDir := path.Join(os.ExpandEnv("$GOPATH"), "logs", "goshots")
 	if !exists {
 		cxt = &scraperContext{
 			scraping:      false,
-			logFilePath:   utils.FileInRunningDir(data.Provider.ShortName() + ".status.log"),
-			errorFilePath: utils.FileInRunningDir(data.Provider.ShortName() + ".error.log"),
+			logFilePath:   path.Join(logDir, data.Provider.ShortName()+".status.log"),
+			errorFilePath: path.Join(logDir, data.Provider.ShortName()+".error.log"),
 		}
 		scraperContexts[data.Provider.ShortName()] = cxt
 	}
@@ -100,6 +101,7 @@ type scraperContext struct {
 func (s *scraperContext) Log(format string, a ...interface{}) {
 	f, err := os.OpenFile(s.logFilePath, os.O_APPEND, 0666)
 	if err != nil {
+		os.MkdirAll(path.Dir(s.logFilePath), 0666)
 		f, err = os.Create(s.logFilePath)
 	}
 	if err != nil {
@@ -115,6 +117,7 @@ func (s *scraperContext) Log(format string, a ...interface{}) {
 func (s *scraperContext) Error(context string, logError error) {
 	f, err := os.OpenFile(s.errorFilePath, os.O_APPEND, 0666)
 	if err != nil {
+		os.MkdirAll(path.Dir(s.errorFilePath), 0666)
 		f, err = os.Create(s.errorFilePath)
 	}
 	if err != nil {
