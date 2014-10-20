@@ -65,12 +65,11 @@ func RenderScrapePage(genericData *RendererData) error {
 		stage, cur, total := cxt.scraper.Progress()
 		data.Status = "Scraping"
 		data.Scraping = true
-		data.Stage = stage
+		data.Stage = fmt.Sprintf("%s (%d / %d)", stage, cur, total)
 		if total <= 0 {
 			data.ProgressPercent = 0
 		} else {
 			data.ProgressPercent = (cur * 100) / total
-			data.Stage = fmt.Sprintf("%s (%d / %d)", data.Stage, cur, total)
 		}
 	}
 
