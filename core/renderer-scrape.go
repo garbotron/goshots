@@ -70,6 +70,7 @@ func RenderScrapePage(genericData *RendererData) error {
 			data.ProgressPercent = 0
 		} else {
 			data.ProgressPercent = (cur * 100) / total
+			data.Stage = fmt.Sprintf("%s (%d / %d)", data.Stage, cur, total)
 		}
 	}
 

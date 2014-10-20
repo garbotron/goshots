@@ -53,7 +53,7 @@ func (t *ProxyTarget) Dispose() {
 
 const maxRendersPerProxy = 500
 const msDelayBetweenRequests = 1
-const enableProxyLogging = true
+const enableProxyLogging = false
 
 var proxyListPages = []string{"http://www.us-proxy.org/", "http://free-proxy-list.net/anonymous-proxy.html"}
 
