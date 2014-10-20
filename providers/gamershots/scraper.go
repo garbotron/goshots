@@ -78,7 +78,6 @@ type scraper struct {
 }
 
 type gameListing struct {
-	Year      int
 	ShortName string
 	LongName  string
 }
@@ -157,7 +156,7 @@ func (s *scraper) scrapeGameListingPage(year int, offset int, done chan<- error)
 		short := attr[len("/game/"):]
 		long := strings.TrimSpace(sel.Text())
 
-		_, err := s.listings.Upsert(bson.M{"shortname": short}, &gameListing{year, short, long})
+		_, err := s.listings.Upsert(bson.M{"shortname": short}, &gameListing{short, long})
 		if err != nil {
 			s.cxt.Error("listings", err)
 		}
@@ -230,7 +229,7 @@ func (s *scraper) scrapeGame(listing *gameListing) bool {
 		return false
 	}
 
-	s.cxt.Log("starting game: %s (%d)...", listing.LongName, listing.Year)
+	s.cxt.Log("starting game: %s...", listing.LongName)
 
 	docMain := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/", listing.ShortName))
 	docRank := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/mobyrank", listing.ShortName))
@@ -239,7 +238,7 @@ func (s *scraper) scrapeGame(listing *gameListing) bool {
 
 	genres, themes := s.scrapeGameMain(docMain)
 	numReviews, avgReviewScore := s.scrapeGameRank(docRank)
-	countries, primaryReleases, rereleases := s.scrapeGameReleases(docReleases, listing.Year)
+	releaseYear, countries, primaryReleases, rereleases := s.scrapeGameReleases(docReleases)
 	screenshots := s.scrapeGameScreenshots(docScreenshots)
 
 	genres = removeDuplicates(genres)
@@ -256,7 +255,7 @@ func (s *scraper) scrapeGame(listing *gameListing) bool {
 	// Apply all changes to the database
 	game := Game{
 		Name:               listing.LongName,
-		ReleaseDate:        listing.Year,
+		ReleaseDate:        releaseYear,
 		NumReviews:         numReviews,
 		AverageReviewScore: avgReviewScore,
 		ScreenshotUrls:     screenshots,
@@ -312,7 +311,11 @@ func (s *scraper) scrapeGameRank(doc *goquery.Document) (numReviews int, avgRevi
 	return
 }
 
-func (s *scraper) scrapeGameReleases(doc *goquery.Document, releaseDate int) (countries []string, primaryReleases []string, rereleases []string) {
+func (s *scraper) scrapeGameReleases(doc *goquery.Document) (
+	releaseYear int,
+	countries []string,
+	primaryReleases []string,
+	rereleases []string) {
 
 	type systemYear struct {
 		system string
@@ -378,11 +381,18 @@ func (s *scraper) scrapeGameReleases(doc *goquery.Document, releaseDate int) (co
 		systemYears = append(systemYears, systemYear{system, year})
 	})
 
+	releaseYear = 100000
+	for _, systemYear := range systemYears {
+		if systemYear.year < releaseYear {
+			releaseYear = systemYear.year
+		}
+	}
+
 	primaryReleases = []string{}
 	rereleases = []string{}
 
 	for _, systemYear := range systemYears {
-		if systemYear.year-releaseDate <= 2 {
+		if systemYear.year-releaseYear <= 2 {
 			// the game was released in the same year or just 1/2 years apart
 			primaryReleases = append(primaryReleases, systemYear.system)
 		} else {
