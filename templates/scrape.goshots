@@ -1,0 +1,124 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+
+  <title>{{.Provider.PrettyName}} - Scrape Status</title>
+
+  <link href='http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Open+Sans:300italic,400,300,700' rel='stylesheet' type='text/css'>
+  <link rel="shortcut icon" href="{{.StaticRoot}}favicon.ico">
+  <link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/semantic-ui/0.16.1/css/semantic.min.css">
+
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/semantic-ui/0.16.1/javascript/semantic.min.js"></script>
+
+  <style>
+
+    html, body {
+      font-size: 15px;
+    }
+
+    body {
+      font-family: "Open Sans", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+      text-rendering: optimizeLegibility;
+      color: #333333;
+      background-color: #FCFCFC;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<div class="ui one column page grid">
+<div class="one column row">
+  <div class="column">
+    <h2 class="ui dividing header">
+      {{.Provider.PrettyName}} Scraper: {{.Status}}
+    </h2>
+  </div>
+</div>
+</div>
+
+<div class="ui two column page grid">
+
+{{if .Scraping}}
+
+<div class="one column row">
+  <div class="column"> 
+    <h5 class="ui header">Stage: {{.Stage}}</h5>
+  </div>
+</div>
+
+<div class="two column row">
+  <div class="one wide column"> 
+    <h5 class="ui header">{{.ProgressPercent}}%</h5>
+  </div>
+  <div class="fifteen wide column"> 
+    <div class="ui active green striped progress">
+      <div class="bar" style="width: {{.ProgressPercent}}%;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="one column row">
+  <div class="column"> 
+    <div class="ui button" onclick="location.href='scrape?op=abort'">
+      <i class="stop icon"></i>
+      Abort Scraping
+    </div>
+    <div class="ui button" onclick="location.href='scrape'">
+      <i class="refresh icon"></i>
+      Refresh
+    </div>
+  </div>
+</div>
+
+{{else}}
+
+<div class="one column row">
+  <div class="column"> 
+    <div class="ui button" onclick="location.href='scrape?op=start'">
+      <i class="play icon"></i>
+      Start Scraping
+    </div>
+    <div class="ui button" onclick="location.href='scrape'">
+      <i class="refresh icon"></i>
+      Refresh
+    </div>
+  </div>
+</div>
+
+{{end}}
+
+<div class="two column row">
+
+<div class="column">
+<h5 class="ui green top attached header">
+  Status Log
+</h5>
+<div class="ui green attached raised segment">
+{{range $line := .LogLines}}
+{{$line}}<br>
+{{end}}
+</div>
+</div>
+
+<div class="column">
+<h5 class="ui red attached top attached header">
+  Error Log
+</h5>
+<div class="ui red attached raised segment">
+{{range $line := .ErrorLines}}
+{{$line}}<br>
+{{end}}
+</div>
+</div>
+</div>
+
+</div>
+
+</body>
+</html>
