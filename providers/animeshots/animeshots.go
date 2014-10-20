@@ -9,7 +9,7 @@ import (
 	"math/rand"
 )
 
-const MongoServerAddress = "127.0.0.1"
+const MongoServerAddress = "localhost"
 const MongoDbName = "animeshots"
 const MongoTempDbName = "animeshots_wip"
 const MongoShowsCollectionName = "shows"
