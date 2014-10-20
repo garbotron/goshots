@@ -1,6 +1,7 @@
 package goshots
 
 import (
+	"html"
 	"html/template"
 )
 
@@ -25,7 +26,7 @@ func RenderMainPage(genericData *RendererData) error {
 		return err
 	}
 
-	data.Solution = solution
+	data.Solution = html.EscapeString(solution)
 	data.Content = content
 
 	return RenderTemplate("main.goshots", data.Writer, &data)

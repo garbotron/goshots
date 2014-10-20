@@ -124,7 +124,7 @@ func (_ asFilterType) Apply(as *Animeshots, vals []int) []bson.M {
 		}
 	}
 	return []bson.M{
-		bson.M{"type": bson.M{"$in": vals}},
+		bson.M{"type": bson.M{"$in": sel}},
 	}
 }
 
