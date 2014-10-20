@@ -30,8 +30,7 @@ func AnimeshotsFilters() []AnimeshotsFilter {
 		asFilterTag{Whitelist},
 		asFilterTag{Blacklist},
 		asFilterType{},
-		asFilterDate{},
-		asFilterRating{}}
+		asFilterDate{}}
 }
 
 func (_ Animeshots) Filters() []goshots.Filter {
@@ -160,39 +159,5 @@ func (_ asFilterDate) Apply(as *Animeshots, vals []int) []bson.M {
 		bson.M{"hasyear": true},
 		bson.M{"year": bson.M{"$gte": vals[0]}},
 		bson.M{"year": bson.M{"$lte": vals[1]}},
-	}
-}
-
-//----------------------------------------------------------------------------//
-
-type asFilterRating struct{}
-
-func (_ asFilterRating) Name() string {
-	return "Filter by Rating (Out of 100)"
-}
-
-func (_ asFilterRating) Prompt() string {
-	return "Average rating"
-}
-
-func (_ asFilterRating) Type() goshots.FilterType {
-	return goshots.FilterTypeNumberRange
-}
-
-func (_ asFilterRating) Names(_ goshots.Provider) ([]string, error) {
-	return nil, nil
-}
-
-func (_ asFilterRating) DefaultValues() []int {
-	return []int{0, 100}
-}
-
-func (_ asFilterRating) Apply(as *Animeshots, vals []int) []bson.M {
-	if len(vals) < 2 {
-		return []bson.M{}
-	}
-	return []bson.M{
-		bson.M{"averagerating": bson.M{"$gte": vals[0]}},
-		bson.M{"averagerating": bson.M{"$lte": vals[1]}},
 	}
 }
