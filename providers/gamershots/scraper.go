@@ -30,7 +30,7 @@ func (gs *Gamershots) StartScraping(context goshots.ScraperContext) goshots.Scra
 	db.DropDatabase() // in case there was any stale data left over
 	games := db.C(MongoGamesCollectionName)
 	listings := db.C("listings")
-	listings.EnsureIndex(bson.M{"shortname": 1})
+	listings.EnsureIndexKey("shortname")
 
 	s := scraper{
 		cxt:         context,
