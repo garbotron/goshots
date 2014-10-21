@@ -128,6 +128,7 @@ func (s *scraperContext) Error(context string, logError error) {
 func (s *scraperContext) Done(err error) {
 	s.scraping = false
 	s.aborting = false
+	s.scraper = nil // let it get GCed
 	if err == nil {
 		s.Log("completed without errors: %s", time.Now().Sub(s.startTime).String())
 	} else {

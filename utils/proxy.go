@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -84,17 +83,9 @@ func proxyLog(format string, args ...interface{}) {
 }
 
 func (t *ProxyTarget) downloadWithProxy(page string, proxy *proxy, validator func(string) error) (string, error) {
-	client := *http.DefaultClient
-	client.Transport = &http.Transport{
-		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Second*5)
-		},
-		Proxy: func(r *http.Request) (*url.URL, error) {
-			return proxy.url(), nil
-		},
-		ResponseHeaderTimeout: time.Second * 5,
-	}
-	client.Timeout = time.Second * 10
+	client := CreateCautiousClient(func(r *http.Request) (*url.URL, error) {
+		return proxy.url(), nil
+	})
 
 	str, err := RespToString(client.Get(page))
 	if err != nil {
@@ -114,12 +105,8 @@ func (t *ProxyTarget) downloadWithProxy(page string, proxy *proxy, validator fun
 	return str, nil
 }
 
-func (t *ProxyTarget) downloadWithoutProxy(page string) (string, error) {
-	return RespToString(http.Get(page))
-}
-
 func (t *ProxyTarget) downloadProxyListRootPage() *goquery.Document {
-	html, err := t.downloadWithoutProxy(proxyListPages[t.curProxyListPage])
+	html, err := DownloadPage(proxyListPages[t.curProxyListPage])
 	if err != nil {
 		proxyLog("[PROXY] failed root page download, retrying...")
 		<-time.After(time.Second * 5)

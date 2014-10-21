@@ -7,10 +7,10 @@ import (
 	"github.com/garbotron/goshots/core"
 	"github.com/garbotron/goshots/utils"
 	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,14 +29,12 @@ func (gs *Gamershots) StartScraping(context goshots.ScraperContext) goshots.Scra
 	db := gs.db.DB(MongoTempDbName)
 	db.DropDatabase() // in case there was any stale data left over
 	games := db.C(MongoGamesCollectionName)
-	listings := db.C("listings")
-	listings.EnsureIndexKey("shortname")
 
 	s := scraper{
 		cxt:         context,
 		gs:          gs,
 		games:       games,
-		listings:    listings,
+		listings:    make(map[string]bool),
 		proxyTarget: utils.CreateProxyTarget(20),
 		stage:       "beginning scan",
 		abortSignal: make(chan struct{}, 1),
@@ -61,25 +59,23 @@ func (s *scraper) Abort() {
 func (s *scraper) Progress() (stage string, cur int, total int) {
 	stage = s.stage
 	cur, _ = s.games.Count()
-	total, _ = s.listings.Count()
+	s.listingsLock.Lock()
+	total = len(s.listings)
+	s.listingsLock.Unlock()
 	return
 }
 
 type scraper struct {
-	cxt         goshots.ScraperContext
-	gs          *Gamershots
-	listings    *mgo.Collection // basic game listing data, per the "gameListing" struct
-	games       *mgo.Collection // full game data used for final result
-	proxyTarget *utils.ProxyTarget
-	stage       string
-	testMode    bool // debug feature: parse vastly less input
-	aborting    bool
-	abortSignal chan struct{}
-}
-
-type gameListing struct {
-	ShortName string
-	LongName  string
+	cxt          goshots.ScraperContext
+	gs           *Gamershots
+	listings     map[string]bool
+	listingsLock sync.Mutex
+	games        *mgo.Collection // full game data used for final result
+	proxyTarget  *utils.ProxyTarget
+	stage        string
+	testMode     bool // debug feature: parse vastly less input
+	aborting     bool
+	abortSignal  chan struct{}
 }
 
 func (s *scraper) scrape() {
@@ -154,13 +150,16 @@ func (s *scraper) scrapeGameListingPage(year int, offset int, done chan<- error)
 			return
 		}
 		short := attr[len("/game/"):]
-		long := strings.TrimSpace(sel.Text())
 
-		_, err := s.listings.Upsert(bson.M{"shortname": short}, &gameListing{short, long})
-		if err != nil {
-			s.cxt.Error("listings", err)
+		s.listingsLock.Lock()
+		_, has := s.listings[short]
+		if !has {
+			s.listings[short] = true
 		}
-		s.cxt.Log("found '%s' (%d)", long, year)
+		s.listingsLock.Unlock()
+		if !has {
+			s.cxt.Log("found '%s'", short)
+		}
 		numGames++
 	})
 
@@ -179,27 +178,19 @@ func (s *scraper) scrapeGameListingPage(year int, offset int, done chan<- error)
 
 func (s *scraper) scrapeGames() error {
 
-	listings := make(chan *gameListing)
+	listings := make(chan string)
 	done := make(chan struct{})
 	for i := 0; i < numGameScrapers; i++ {
 		go s.scrapeGamesFromChannel(listings, done)
 	}
 
-	listing := gameListing{}
-	iter := s.listings.Find(nil).Iter()
-	for iter.Next(&listing) {
+	for name, _ := range s.listings {
 		if s.aborting {
-			iter.Close()
 			break
 		}
-		copy := listing
 		select {
-		case listings <- &copy:
+		case listings <- name:
 		case <-s.abortSignal:
-		}
-		if s.aborting {
-			iter.Close()
-			break
 		}
 	}
 	close(listings)
@@ -214,7 +205,7 @@ func (s *scraper) scrapeGames() error {
 	}
 }
 
-func (s *scraper) scrapeGamesFromChannel(listings <-chan *gameListing, done chan<- struct{}) {
+func (s *scraper) scrapeGamesFromChannel(listings <-chan string, done chan<- struct{}) {
 	for game := range listings {
 		if !s.scrapeGame(game) {
 			break // aborted
@@ -223,20 +214,20 @@ func (s *scraper) scrapeGamesFromChannel(listings <-chan *gameListing, done chan
 	done <- struct{}{}
 }
 
-func (s *scraper) scrapeGame(listing *gameListing) bool {
+func (s *scraper) scrapeGame(shortName string) bool {
 
 	if s.aborting {
 		return false
 	}
 
-	s.cxt.Log("starting game: %s...", listing.LongName)
+	s.cxt.Log("starting game: %s...", shortName)
 
-	docMain := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/", listing.ShortName))
-	docRank := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/mobyrank", listing.ShortName))
-	docReleases := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/release-info", listing.ShortName))
-	docScreenshots := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/screenshots", listing.ShortName))
+	docMain := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/", shortName))
+	docRank := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/mobyrank", shortName))
+	docReleases := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/release-info", shortName))
+	docScreenshots := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/screenshots", shortName))
 
-	genres, themes := s.scrapeGameMain(docMain)
+	longName, genres, themes := s.scrapeGameMain(docMain)
 	numReviews, avgReviewScore := s.scrapeGameRank(docRank)
 	releaseYear, countries, primaryReleases, rereleases := s.scrapeGameReleases(docReleases)
 	screenshots := s.scrapeGameScreenshots(docScreenshots)
@@ -248,13 +239,18 @@ func (s *scraper) scrapeGame(listing *gameListing) bool {
 	rereleases = removeDuplicates(rereleases)
 	screenshots = removeDuplicates(screenshots)
 
+	if longName == "" {
+		s.cxt.Error(shortName, errors.New("long name not found"))
+		return true
+	}
+
 	if s.aborting {
 		return false
 	}
 
 	// Apply all changes to the database
 	game := Game{
-		Name:               listing.LongName,
+		Name:               longName,
 		ReleaseDate:        releaseYear,
 		NumReviews:         numReviews,
 		AverageReviewScore: avgReviewScore,
@@ -265,14 +261,16 @@ func (s *scraper) scrapeGame(listing *gameListing) bool {
 		Themes:             themes,
 		Regions:            countries,
 	}
+	fmt.Println(game)
 	s.games.Insert(&game)
-	s.cxt.Log("completed game: %s (%d screenshots)", listing.LongName, len(screenshots))
+	s.cxt.Log("completed game: %s (%d screenshots)", shortName, len(screenshots))
 
 	return true
 }
 
-func (s *scraper) scrapeGameMain(doc *goquery.Document) (genres []string, themes []string) {
+func (s *scraper) scrapeGameMain(doc *goquery.Document) (longName string, genres []string, themes []string) {
 
+	longName = strings.TrimSpace(doc.Find("h1.niceHeaderTitle>a").First().Text())
 	genres = []string{}
 	themes = []string{}
 
@@ -404,10 +402,9 @@ func (s *scraper) scrapeGameReleases(doc *goquery.Document) (
 
 func (s *scraper) scrapeGameScreenshots(doc *goquery.Document) []string {
 
-	ssUrls := []string{}
+	urls := []string{}
 
 	doc.Find("div.mobythumbnail").Each(func(_ int, outer *goquery.Selection) {
-
 		if s.aborting {
 			return
 		}
@@ -422,7 +419,23 @@ func (s *scraper) scrapeGameScreenshots(doc *goquery.Document) []string {
 			return
 		}
 
-		linkDoc := s.downloadPage("http://www.mobygames.com" + href)
+		urls = append(urls, "http://www.mobygames.com"+href)
+	})
+
+	filteredUrls := []string{}
+	for len(urls) > 0 && len(filteredUrls) < maxScreenshotsPerGame {
+		idx := rand.Int() % len(urls)
+		filteredUrls = append(filteredUrls, urls[idx])
+		urls = append(urls[:idx], urls[idx+1:]...) // delete idx from slice
+	}
+
+	screenshots := []string{}
+	for _, url := range filteredUrls {
+		if s.aborting {
+			break
+		}
+
+		linkDoc := s.downloadPage(url)
 		linkDoc.Find("img").Each(func(_ int, img *goquery.Selection) {
 			src, ok := img.Attr("src")
 
@@ -435,16 +448,10 @@ func (s *scraper) scrapeGameScreenshots(doc *goquery.Document) []string {
 				return // won't fit in the DB table
 			}
 
-			ssUrls = append(ssUrls, ssUrl)
+			screenshots = append(screenshots, ssUrl)
 		})
-	})
-
-	screenshots := []string{}
-	for len(ssUrls) > 0 && len(screenshots) < maxScreenshotsPerGame {
-		idx := rand.Int() % len(ssUrls)
-		screenshots = append(screenshots, ssUrls[idx])
-		ssUrls = append(ssUrls[:idx], ssUrls[idx+1:]...) // delete idx from slice
 	}
+
 	return screenshots
 }
 

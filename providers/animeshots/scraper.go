@@ -3,12 +3,11 @@ package animeshots
 import (
 	"errors"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
 	"github.com/garbotron/goshots/core"
 	"github.com/garbotron/goshots/utils"
 	"gopkg.in/mgo.v2"
-	"io/ioutil"
-	"net/http"
+	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -20,7 +19,6 @@ func (as *Animeshots) CanScrape() bool {
 }
 
 func (as *Animeshots) StartScraping(context goshots.ScraperContext) goshots.Scraper {
-
 	db := as.db.DB(MongoTempDbName)
 	db.DropDatabase() // in case there was any stale data left over
 	shows := db.C(MongoShowsCollectionName)
@@ -104,32 +102,74 @@ func (s *scraper) finish(err error) {
 	s.cxt.Done(err)
 }
 
-func (s *scraper) scrapeShowListings() error {
+type regexResult struct {
+	groups []string
+	index  int
+}
 
-	// don't use proxy for this giant page
-	resp, err := http.Get("http://www.animeclick.it/AnimeSlide.php?year=blank&ordine=xtitjap&senso=ASC")
-	if err != nil {
-		return err
+var regexNoMatchError = errors.New("regex didn't match")
+
+// get all regex matches for all numbered () subgroups within the text
+func rxFindOne(hasytack string, needle string) (regexResult, error) {
+	re := regexp.MustCompile(needle)
+	res := re.FindStringSubmatchIndex(hasytack)
+	ret := regexResult{}
+	if len(res) == 0 {
+		return ret, regexNoMatchError
 	}
-
-	doc, err := goquery.NewDocumentFromResponse(resp)
-	if err != nil {
-		return err
+	ret.index = res[0]
+	ret.groups = make([]string, (len(res)/2)-1)
+	for j := range ret.groups {
+		ret.groups[j] = hasytack[res[(j+1)*2]:res[((j+1)*2)+1]]
 	}
+	return ret, nil
+}
 
-	doc.Find("td[bgcolor='#303161'] a[href^='/anime/']").Each(func(_ int, sel *goquery.Selection) {
-		val, ok := sel.Attr("href")
-		if ok {
-			s.listings[val] = true
+// get the first regex matches for all numbered () subgroups within the text
+func rxFindAll(hasytack string, needle string) []regexResult {
+	re := regexp.MustCompile(needle)
+	result := re.FindAllStringSubmatchIndex(hasytack, -1)
+	ret := make([]regexResult, len(result))
+	for i, res := range result {
+		ret[i].index = res[0]
+		ret[i].groups = make([]string, (len(res)/2)-1)
+		for j := range ret[i].groups {
+			ret[i].groups[j] = hasytack[res[(j+1)*2]:res[((j+1)*2)+1]]
 		}
-	})
+	}
+	return ret
+}
+
+// performs rxFindAll() only on text that occurs after the given pattern
+func rxFindAllAfter(hasytack string, needle string, after string) []regexResult {
+	ret := regexp.MustCompile(after).FindStringIndex(hasytack)
+	if len(ret) == 0 {
+		return []regexResult{}
+	}
+	return rxFindAll(hasytack[ret[1]:], needle)
+}
+
+// performs rxFindAll() only on text that occurs for each section bounded by start and end patterns
+func rxFindAllRegions(hasytack string, start string, end string) []regexResult {
+	return rxFindAll(hasytack, start+`((?s).*?)`+end)
+}
+
+func (s *scraper) scrapeShowListings() error {
+	// don't use proxy for this giant page
+	doc, err := utils.DownloadPage("http://www.animeclick.it/AnimeSlide.php?year=blank&ordine=xtitjap&senso=ASC")
+	if err != nil {
+		return err
+	}
+
+	for _, match := range rxFindAllAfter(doc, `a href="(/anime/[^"]+)"`, `bgcolor="#303161"`) {
+		s.listings[match.groups[0]] = true
+	}
 
 	s.cxt.Log("found %d shows!", len(s.listings))
 	return nil
 }
 
 func (s *scraper) scrapeShows() error {
-
 	listings := make(chan string)
 	done := make(chan struct{})
 	for i := 0; i < numShowScrapers; i++ {
@@ -170,7 +210,6 @@ func (s *scraper) scrapeShowsFromChannel(listings <-chan string, done chan<- str
 }
 
 func (s *scraper) scrapeShow(listingUrl string) bool {
-
 	if s.aborting {
 		return false
 	}
@@ -188,8 +227,6 @@ func (s *scraper) scrapeShow(listingUrl string) bool {
 
 	if format == "" {
 		s.cxt.Error(listingUrl, errors.New("couldn't find type"))
-		t, _ := doc.Html()
-		ioutil.WriteFile(`C:\temp\temp.html`, []byte(t), 0666)
 	}
 
 	show := Show{}
@@ -204,8 +241,8 @@ func (s *scraper) scrapeShow(listingUrl string) bool {
 
 	show.Tags = []string{}
 	if tags != "" {
-		for _, tag := range strings.Split(tags, ",") {
-			tag = s.translateTag(strings.TrimSpace(tag))
+		for _, r := range rxFindAll(tags, `<a.*?>([^<]+)</a>`) {
+			tag := s.translateTag(strings.TrimSpace(r.groups[0]))
 			if tag != "" {
 				show.Tags = append(show.Tags, tag)
 			}
@@ -213,23 +250,20 @@ func (s *scraper) scrapeShow(listingUrl string) bool {
 	}
 
 	show.ScreenshotUrls = []string{}
-	doc.Find("div.anime_img").Each(func(_ int, sel *goquery.Selection) {
-		link := sel.Find("a").First()
-		if link.Size() == 1 {
-			href, ok := link.Attr("href")
-			if ok {
-				show.ScreenshotUrls = append(show.ScreenshotUrls, rootUrl(href))
-			}
-		} else {
-			src, ok := sel.Find("img").First().Attr("src")
-			if ok {
-				show.ScreenshotUrls = append(show.ScreenshotUrls, rootUrl(src))
-			}
+	for _, imgDiv := range rxFindAllRegions(doc, `<div class="anime_img"`, `</div>`) {
+		r, err := rxFindOne(imgDiv.groups[0], `<a.*?href="([^"]+)"`)
+		if err == regexNoMatchError {
+			r, err = rxFindOne(imgDiv.groups[0], `<img.*?src="([^"]+)"`)
 		}
-	})
+		if err == nil {
+			show.ScreenshotUrls = append(show.ScreenshotUrls, rootUrl(r.groups[0]))
+		}
+	}
 
 	s.shows.Insert(&show)
+
 	s.cxt.Log("completed show: %s (%d)", show.Name, show.Year)
+	runtime.GC()
 
 	return true
 }
@@ -241,12 +275,12 @@ func rootUrl(url string) string {
 	return url
 }
 
-func findTitledData(doc *goquery.Document, title string) string {
-	ret := strings.TrimSpace(doc.Find("td.atitle1:contains('" + title + "')").Next().Text())
-	if ret == "" {
-		ret = strings.TrimSpace(doc.Find("td.atitle3:contains('" + title + "')").Next().Text())
+func findTitledData(doc string, title string) string {
+	r, err := rxFindOne(doc, `<td class="atitle[13]"[^>]*>`+title+`</td>[ \t\r\n]*<td class="acontent[13]">((?s).*?)</td>`)
+	if err != nil {
+		return ""
 	}
-	return ret
+	return strings.TrimSpace(r.groups[0])
 }
 
 func (s *scraper) translateType(format string) string {
@@ -406,7 +440,6 @@ func (s *scraper) translateTag(tag string) string {
 }
 
 func (s *scraper) commitChanges() error {
-
 	db := s.as.db.DB(MongoDbName)
 	shows := db.C(MongoShowsCollectionName)
 	shows.DropCollection()
@@ -426,20 +459,13 @@ func (s *scraper) commitChanges() error {
 	return nil
 }
 
-func (s *scraper) downloadPage(page string) *goquery.Document {
-	html := s.proxyTarget.Get(page, func(s string) error {
+func (s *scraper) downloadPage(page string) string {
+	return s.proxyTarget.Get(page, func(s string) error {
 		if !strings.Contains(s, "Informazione su anime, manga e fansub") {
 			return errors.New("looks like the site must have been blocked")
 		}
 		return nil
 	})
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
-	if err != nil {
-		s.cxt.Error(page, err)
-		doc, _ := goquery.NewDocumentFromReader(strings.NewReader(""))
-		return doc
-	}
-	return doc
 }
 
 func titleCase(str string) string {
