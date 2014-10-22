@@ -1,6 +1,7 @@
 package gamershots
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
@@ -8,6 +9,8 @@ import (
 	"github.com/garbotron/goshots/utils"
 	"gopkg.in/mgo.v2"
 	"math/rand"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -125,6 +128,20 @@ func readManyErrors(done <-chan error, count int) error {
 }
 
 func (s *scraper) scrapeGameListings() error {
+
+	// if we have a file listing all of the games, we can just use that instead
+	listingsCacheFilePath := path.Join(os.ExpandEnv("$GOPATH"), "data", "gamershots-games.txt")
+	listingsCacheFile, err := os.Open(listingsCacheFilePath)
+	if err == nil {
+		defer listingsCacheFile.Close()
+		scanner := bufio.NewScanner(listingsCacheFile)
+		for scanner.Scan() {
+			s.listings[strings.TrimSpace(scanner.Text())] = true
+		}
+		return scanner.Err()
+	}
+
+	// otherwise we actually need to go collect it
 	done := make(chan error)
 	firstYear := absFirstYear
 	lastYear := absLastYear
@@ -228,8 +245,8 @@ func (s *scraper) scrapeGame(shortName string) bool {
 	docScreenshots := s.downloadPage(fmt.Sprintf("http://www.mobygames.com/game/%s/screenshots", shortName))
 
 	longName, genres, themes := s.scrapeGameMain(docMain)
-	numReviews, avgReviewScore := s.scrapeGameRank(docRank)
-	releaseYear, countries, primaryReleases, rereleases := s.scrapeGameReleases(docReleases)
+	numReviews, avgReviewScore := s.scrapeGameRank(shortName, docRank)
+	releaseYear, countries, primaryReleases, rereleases := s.scrapeGameReleases(shortName, docReleases)
 	screenshots := s.scrapeGameScreenshots(docScreenshots)
 
 	genres = removeDuplicates(genres)
@@ -290,14 +307,14 @@ func (s *scraper) scrapeGameMain(doc *goquery.Document) (longName string, genres
 	return
 }
 
-func (s *scraper) scrapeGameRank(doc *goquery.Document) (numReviews int, avgReviewScore int) {
+func (s *scraper) scrapeGameRank(shortName string, doc *goquery.Document) (numReviews int, avgReviewScore int) {
 	reviewTotal := 0
 	numReviews = 0
 	doc.Find("div.fl.scoreBoxMed").Each(func(_ int, div *goquery.Selection) {
 		numReviews++
 		x, err := strconv.Atoi(div.Text())
 		if err != nil {
-			s.cxt.Error(doc.Url.String(), err)
+			s.cxt.Error(shortName, err)
 		}
 		reviewTotal += x
 	})
@@ -309,7 +326,7 @@ func (s *scraper) scrapeGameRank(doc *goquery.Document) (numReviews int, avgRevi
 	return
 }
 
-func (s *scraper) scrapeGameReleases(doc *goquery.Document) (
+func (s *scraper) scrapeGameReleases(shortName string, doc *goquery.Document) (
 	releaseYear int,
 	countries []string,
 	primaryReleases []string,
@@ -344,7 +361,7 @@ func (s *scraper) scrapeGameReleases(doc *goquery.Document) (
 		})
 
 		if len(indivCountries) == 0 {
-			s.cxt.Error(doc.Url.String(), errors.New("could not find any countries inside country div"))
+			s.cxt.Error(shortName, errors.New("could not find any countries inside country div"))
 			return
 		}
 
@@ -354,7 +371,7 @@ func (s *scraper) scrapeGameReleases(doc *goquery.Document) (
 
 		system := countryHolder.Parent().PrevAllFiltered("h2").First().Text()
 		if system == "" {
-			s.cxt.Error(doc.Url.String(), errors.New("could not find system h2"))
+			s.cxt.Error(shortName, errors.New("could not find system h2"))
 			return
 		}
 
@@ -373,7 +390,7 @@ func (s *scraper) scrapeGameReleases(doc *goquery.Document) (
 		}
 		year, err := strconv.Atoi(date)
 		if err != nil {
-			s.cxt.Error(doc.Url.String(), err)
+			s.cxt.Error(shortName, err)
 			return
 		}
 		systemYears = append(systemYears, systemYear{system, year})
