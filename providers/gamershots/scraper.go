@@ -278,7 +278,6 @@ func (s *scraper) scrapeGame(shortName string) bool {
 		Themes:             themes,
 		Regions:            countries,
 	}
-	fmt.Println(game)
 	s.games.Insert(&game)
 	s.cxt.Log("completed game: %s (%d screenshots)", shortName, len(screenshots))
 
@@ -361,7 +360,7 @@ func (s *scraper) scrapeGameReleases(shortName string, doc *goquery.Document) (
 		})
 
 		if len(indivCountries) == 0 {
-			s.cxt.Error(shortName, errors.New("could not find any countries inside country div"))
+			// sometimes the country is blank and we hould just ignore these cases
 			return
 		}
 
@@ -395,6 +394,10 @@ func (s *scraper) scrapeGameReleases(shortName string, doc *goquery.Document) (
 		}
 		systemYears = append(systemYears, systemYear{system, year})
 	})
+
+	if len(countries) == 0 || len(systemYears) == 0 {
+		s.cxt.Error(shortName, errors.New("could not find any countries or any releases"))
+	}
 
 	releaseYear = 100000
 	for _, systemYear := range systemYears {
