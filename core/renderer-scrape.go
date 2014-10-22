@@ -68,8 +68,16 @@ func RenderScrapePage(genericData *RendererData) error {
 		data.Stage = fmt.Sprintf("%s (%d / %d)", stage, cur, total)
 		if total <= 0 {
 			data.ProgressPercent = 0
+			data.TimeToComplete = "N/A"
 		} else {
 			data.ProgressPercent = (cur * 100) / total
+			if cur == 0 {
+				data.TimeToComplete = "Never"
+			} else {
+				taken := time.Now().Sub(cxt.startTime)
+				secs := (int64(taken.Seconds()) * int64(total-cur)) / int64(cur)
+				data.TimeToComplete = fmt.Sprintf("%dh, %dm, %ds", secs/3600, (secs/60)%60, secs%60)
+			}
 		}
 	}
 
@@ -85,6 +93,7 @@ type ScrapeRendererData struct {
 	Scraping        bool
 	Stage           string
 	ProgressPercent int
+	TimeToComplete  string
 	LogLines        []string
 	ErrorLines      []string
 }

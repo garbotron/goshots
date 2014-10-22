@@ -296,7 +296,12 @@ func (s *scraper) scrapeGameMain(doc *goquery.Document) (longName string, genres
 				genres = append(genres, a.Text())
 			})
 		}
-		if div.Text() == "Theme" || div.Text() == "Themes" {
+		// include perspectives and misc items under the themes category
+		if div.Text() == "Theme" ||
+			div.Text() == "Themes" ||
+			div.Text() == "Misc" ||
+			div.Text() == "Perspective" ||
+			div.Text() == "Perspectives" {
 			div.Next().Find("a").Each(func(_ int, a *goquery.Selection) {
 				themes = append(themes, a.Text())
 			})

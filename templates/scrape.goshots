@@ -49,6 +49,7 @@
 <div class="one column row">
   <div class="column"> 
     <h5 class="ui header">Stage: {{.Stage}}</h5>
+    <h5 class="ui header">Estimated Time to Completion: {{.TimeToComplete}}</h5>
   </div>
 </div>
 
