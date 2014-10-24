@@ -22,7 +22,6 @@
 
     body {
       font-family: "Open Sans", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
-      text-rendering: optimizeLegibility;
       color: #333333;
       background-color: #FCFCFC;
     }
@@ -67,7 +66,8 @@
     /* makes it look better in Firefox / mobile Chrome */
     select.goshots {
       background-color: #FFFFFF;
-    } 
+    }
+
     select.goshots:disabled {
       color: #A5A5A5;
     }
