@@ -33,8 +33,11 @@ func ServerInit(r *mux.Router, providers ...Provider) error {
 			s = r.Host(subdomain + "." + domainName).Subrouter()
 		}
 
+		// serve files under /static using a standard file system server
+		s.Handle("/static/{path:.*}", http.StripPrefix("/static/", http.FileServer(http.Dir(localStaticRoot))))
+
+		// all other URLs go to the custom handler
 		s.HandleFunc("/{file:.*}", getHandler(provider))
-		s.Handle("/static/{path:.*}", http.FileServer(http.Dir(localStaticRoot)))
 	}
 
 	return nil

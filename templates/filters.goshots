@@ -2,12 +2,11 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 
   <title>{{.Provider.PrettyName}} - Filters</title>
 
-  <link href='http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Open+Sans:300italic,400,300,700' rel='stylesheet' type='text/css'>
+  <link href="http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700%7COpen+Sans:300italic,400,300,700" rel="stylesheet" type="text/css">
   <link rel="shortcut icon" href="{{.StaticRoot}}favicon.ico">
   <link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/semantic-ui/0.16.1/css/semantic.min.css">
 
@@ -285,12 +284,12 @@
 {{end}}
 
   <div class="column">
-    <h5 class="ui filter-{{$filterIdx}} top attached header">
+    <div class="ui filter-{{$filterIdx}} top attached tiny header">
       <div class="ui filter-{{$filterIdx}} checkbox">
         <input type="checkbox" {{if $filter.IsEnabled}}checked{{end}}>
-        <label class="goshots header">{{$filter.Filter.Name}}</label>
+        <label class="goshots fluid header">{{$filter.Filter.Name}}</label>
       </div>
-    </h5>
+    </div>
     <div class="ui filter-{{$filterIdx}} attached {{if $filter.IsMultiSelect}}select-holder{{end}} form segment">
 
     {{if $filter.IsNumber}}
