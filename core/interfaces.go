@@ -61,6 +61,7 @@ func IsElemNotFoundError(err error) bool {
 }
 
 type Provider interface {
+	Subdomain() string
 	ShortName() string
 	PrettyName() string
 	Description() []template.HTML

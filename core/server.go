@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gorilla/mux"
 	"html/template"
 	"io"
 	"net/http"
@@ -13,31 +14,28 @@ import (
 	"strings"
 )
 
-func ServerInit(root string, providers ...Provider) error {
+func ServerInit(r *mux.Router, providers ...Provider) error {
 
-	if root[len(root)-2:] != "/" {
-		root += "/"
-	}
-	webRoot = root
-	webStaticRoot = webRoot + "static/"
-
-	localRoot := path.Join(os.Getenv("GOPATH"), "src", "github.com", "garbotron", "goshots")
-	localTemplateRoot = path.Join(localRoot, "templates")
-	localStaticRoot = path.Join(localRoot, "static")
+	localRoot := os.ExpandEnv("$GOPATH/src/github.com/garbotron/goshots")
+	localTemplateRoot = localRoot + "/templates"
+	localStaticRoot = localRoot + "/static"
 
 	for _, provider := range providers {
 		if err := provider.Load(); err != nil {
 			return err
 		}
 
-		http.HandleFunc(
-			fmt.Sprintf("%s%s/", webRoot, provider.ShortName()),
-			getHandler(provider))
-	}
+		subdomain := provider.Subdomain()
+		var s *mux.Router
+		if subdomain == "" {
+			s = r.Host("{sub:(www.)?}" + domainName).Subrouter()
+		} else {
+			s = r.Host(subdomain + "." + domainName).Subrouter()
+		}
 
-	http.Handle(
-		webStaticRoot,
-		http.StripPrefix(webStaticRoot, http.FileServer(http.Dir(localStaticRoot))))
+		s.HandleFunc("/{file:.*}", getHandler(provider))
+		s.Handle("/static/{path:.*}", http.FileServer(http.Dir(localStaticRoot)))
+	}
 
 	return nil
 }
@@ -62,9 +60,11 @@ func RenderTemplate(name string, w io.Writer, data interface{}) error {
 	}
 }
 
+const domainName = "gamershots.info"
+const webRoot = "/"
+const webStaticRoot = "/static/"
+
 var errGoshotsPageNotFound = errors.New("Page not found")
-var webRoot string
-var webStaticRoot string
 var localTemplateRoot string
 var localStaticRoot string
 

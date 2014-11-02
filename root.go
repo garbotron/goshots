@@ -5,11 +5,12 @@ import (
 	"github.com/garbotron/goshots/providers/animeclips"
 	"github.com/garbotron/goshots/providers/animeshots"
 	"github.com/garbotron/goshots/providers/gamershots"
+	"github.com/gorilla/mux"
 	"math/rand"
 	"time"
 )
 
-func Init() error {
+func Init(r *mux.Router) error {
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	providers := []goshots.Provider{
@@ -18,5 +19,5 @@ func Init() error {
 		&animeclips.Animeclips{},
 	}
 
-	return goshots.ServerInit("/go", providers...)
+	return goshots.ServerInit(r, providers...)
 }

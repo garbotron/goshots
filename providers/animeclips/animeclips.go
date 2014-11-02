@@ -14,6 +14,10 @@ type Animeclips struct {
 	lines []string
 }
 
+func (_ *Animeclips) Subdomain() string {
+	return "animeclips"
+}
+
 func (_ *Animeclips) ShortName() string {
 	return "animeclips"
 }

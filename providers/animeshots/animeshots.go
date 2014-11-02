@@ -27,6 +27,10 @@ type Show struct {
 	ScreenshotUrls []string
 }
 
+func (_ *Animeshots) Subdomain() string {
+	return "anime"
+}
+
 func (_ *Animeshots) ShortName() string {
 	return "animeshots"
 }

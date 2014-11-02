@@ -32,6 +32,10 @@ type Game struct {
 	Regions            []string
 }
 
+func (_ *Gamershots) Subdomain() string {
+	return "" // top-level domain
+}
+
 func (_ *Gamershots) ShortName() string {
 	return "gamershots"
 }
