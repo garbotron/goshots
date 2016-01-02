@@ -6,10 +6,12 @@ import (
 	"github.com/garbotron/goshots/core"
 	"github.com/garbotron/goshots/utils"
 	"gopkg.in/mgo.v2"
+	"net/http"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const numShowScrapers = 15
@@ -72,11 +74,13 @@ func (s *scraper) scrape() {
 	// 1 - look at the listing pages only (URLs)
 	// 2 - for each show, scrape all the related pages
 
-	s.cxt.Log("collecting show listings...")
-	s.stage = "collecting show list"
-	if err := s.scrapeShowListings(); err != nil {
-		s.finish(err)
-		return
+	for year := 1900; year <= time.Now().Year()+1; year++ {
+		s.cxt.Log(fmt.Sprintf("collecting show listings (%d)...", year))
+		s.stage = fmt.Sprintf("collecting show list (%d)", year)
+		if err := s.scrapeShowListings(year); err != nil {
+			s.finish(err)
+			return
+		}
 	}
 
 	s.cxt.Log("starting full scan...")
@@ -154,9 +158,11 @@ func rxFindAllRegions(hasytack string, start string, end string) []regexResult {
 	return rxFindAll(hasytack, start+`((?s).*?)`+end)
 }
 
-func (s *scraper) scrapeShowListings() error {
-	// don't use proxy for this giant page
-	doc, err := utils.DownloadPage("http://www.animeclick.it/AnimeSlide.php?year=blank&ordine=xtitjap&senso=ASC")
+func (s *scraper) scrapeShowListings(year int) error {
+	// don't use proxy for the year listings
+	doc, err := utils.DownloadPage(
+		fmt.Sprintf("http://www.animeclick.it/AnimeSlide.php?year=%d&ordine=xtitjap&senso=ASC", year),
+		&http.Cookie{Name: "ac_campaign", Value: "show"})
 	if err != nil {
 		return err
 	}
@@ -236,6 +242,11 @@ func (s *scraper) scrapeShow(listingUrl string) bool {
 		show.Name = origTitle
 	}
 	show.Type = s.translateType(format)
+	if show.Type == "" {
+		s.cxt.Log("skipped show due to invalid format: %s / %s", show.Name, format)
+		return true
+	}
+
 	show.Year, err = strconv.Atoi(year)
 	show.HasYear = err == nil
 
@@ -280,7 +291,10 @@ func findTitledData(doc string, title string) string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(r.groups[0])
+	ret := strings.TrimSpace(r.groups[0])
+	ret = strings.TrimPrefix(ret, "<H2>")
+	ret = strings.TrimSuffix(ret, "</H2>")
+	return strings.TrimSpace(ret)
 }
 
 func (s *scraper) translateType(format string) string {
@@ -295,15 +309,13 @@ func (s *scraper) translateType(format string) string {
 		return "Special"
 	case strings.Contains(format, "Extra"):
 		return "Extra"
-	case strings.Contains(format, "Live Action"):
-		return "Live Action"
 	case strings.Contains(format, "Web"):
 		return "Web"
-	case format == "Drama":
-		return "Drama"
+	case format == "Videogioco":
+		return "" // ignore intentionally (why would we want to look at video games?)
 	default:
 		s.cxt.Error("main", errors.New(fmt.Sprintf("Unknown type: %s", format)))
-		return format
+		return ""
 	}
 }
 
@@ -315,6 +327,8 @@ func (s *scraper) translateTag(tag string) string {
 	}
 
 	switch tag {
+	case "Adattamento di una storia classica":
+		return "Classic"
 	case "Arti Marziali":
 		return "Martial Arts"
 	case "Automobilismo":
@@ -429,6 +443,8 @@ func (s *scraper) translateTag(tag string) string {
 		return "Thriller"
 	case "Visual novel":
 		return "Visual Novel"
+	case "Visual Novel":
+		return "Visual Novel"
 	case "Yaoi":
 		return "Yaoi"
 	case "Yuri":
@@ -460,12 +476,15 @@ func (s *scraper) commitChanges() error {
 }
 
 func (s *scraper) downloadPage(page string) string {
-	return s.proxyTarget.Get(page, func(s string) error {
-		if !strings.Contains(s, "Informazione su anime, manga e fansub") {
-			return errors.New("looks like the site must have been blocked")
-		}
-		return nil
-	})
+	return s.proxyTarget.Get(
+		page,
+		func(s string) error {
+			if !strings.Contains(s, "Informazione su anime, manga e fansub") {
+				return errors.New("looks like the site must have been blocked")
+			}
+			return nil
+		},
+		&http.Cookie{Name: "ac_campaign", Value: "show"})
 }
 
 func titleCase(str string) string {

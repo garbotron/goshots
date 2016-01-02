@@ -35,8 +35,8 @@ func CreateProxyTarget(numConcurrentProxies int) *ProxyTarget {
 	return &t
 }
 
-func (t *ProxyTarget) Get(page string, validator func(string) error) string {
-	req := renderRequest{page, validator, make(chan string)}
+func (t *ProxyTarget) Get(page string, validator func(string) error, cookies ...*http.Cookie) string {
+	req := renderRequest{page, cookies, validator, make(chan string)}
 	t.requests <- &req
 	return <-req.result
 }
@@ -58,6 +58,7 @@ var proxyListPages = []string{"http://www.us-proxy.org/", "http://free-proxy-lis
 
 type renderRequest struct {
 	page      string
+	cookies   []*http.Cookie
 	validator func(string) error
 	result    chan string
 }
@@ -82,12 +83,24 @@ func proxyLog(format string, args ...interface{}) {
 	}
 }
 
-func (t *ProxyTarget) downloadWithProxy(page string, proxy *proxy, validator func(string) error) (string, error) {
+func (t *ProxyTarget) downloadWithProxy(
+	page string,
+	proxy *proxy,
+	validator func(string) error,
+	cookies []*http.Cookie) (string, error) {
 	client := CreateCautiousClient(func(r *http.Request) (*url.URL, error) {
 		return proxy.url(), nil
 	})
 
-	str, err := RespToString(client.Get(page))
+	req, err := http.NewRequest("GET", page, nil)
+	if err != nil {
+		return "", err
+	}
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+
+	str, err := RespToString(client.Do(req))
 	if err != nil {
 		return "", err
 	}
@@ -128,7 +141,7 @@ func (t *ProxyTarget) downloadProxyListRootPage() *goquery.Document {
 }
 
 func (t *ProxyTarget) testProxy(proxy *proxy) error {
-	str, err := t.downloadWithProxy("http://checkip.dyndns.org/", proxy, nil)
+	str, err := t.downloadWithProxy("http://checkip.dyndns.org/", proxy, nil, []*http.Cookie{})
 	if err != nil {
 		return err
 	}
@@ -196,7 +209,7 @@ func (t *ProxyTarget) renderRequestsUntilFail() (shouldStop bool) {
 			return true
 		}
 
-		str, err := t.downloadWithProxy(req.page, proxy, req.validator)
+		str, err := t.downloadWithProxy(req.page, proxy, req.validator, req.cookies)
 		for err != nil {
 			proxyLog("[PROXY %s] render failed (%s), switching...", proxy.name(), err.Error())
 			t.requests <- req // re-enqueue the request

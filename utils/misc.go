@@ -22,8 +22,15 @@ func CreateCautiousClient(proxy func(*http.Request) (*url.URL, error)) *http.Cli
 	return &client
 }
 
-func DownloadPage(url string) (string, error) {
-	resp, err := CreateCautiousClient(nil).Get(url)
+func DownloadPage(url string, cookies ...*http.Cookie) (string, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	resp, err := CreateCautiousClient(nil).Do(req)
 	if err != nil {
 		return "", err
 	}

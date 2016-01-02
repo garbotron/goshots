@@ -429,7 +429,7 @@ func (s *scraper) scrapeGameScreenshots(doc *goquery.Document) []string {
 
 	urls := []string{}
 
-	doc.Find("div.mobythumbnail").Each(func(_ int, outer *goquery.Selection) {
+	doc.Find("div.thumbnail").Each(func(_ int, outer *goquery.Selection) {
 		if s.aborting {
 			return
 		}
@@ -439,7 +439,7 @@ func (s *scraper) scrapeGameScreenshots(doc *goquery.Document) []string {
 			return
 		}
 
-		href, ok := outer.Find("img").Parent().Attr("href")
+		href, ok := outer.Find("a").Attr("href")
 		if !ok || !strings.HasPrefix(href, "/game/") || !strings.Contains(href, "/screenshots/") {
 			return
 		}
@@ -503,7 +503,7 @@ func (s *scraper) commitChanges() error {
 
 func (s *scraper) downloadPage(page string) *goquery.Document {
 	html := s.proxyTarget.Get(page, func(s string) error {
-		if !strings.Contains(s, "/images/mobygames-logo-sm.png") {
+		if !strings.Contains(s, "/images/mobygames-logo.png") {
 			return errors.New("couldn't find logo")
 		}
 		return nil
